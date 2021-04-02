@@ -1,0 +1,414 @@
+<?xml version="1.0" encoding="iso-8859-1" ?>
+<ZApplication Name="App" Caption="ZGameEditor application" CameraPosition="0 0 8" FileVersion="2">
+  <Comment>
+<![CDATA[Youlean Blur effect now enhanced with Tilt-Shift function.
+
+
+Amount - Blur amount
+10x Amount - Blur amount multiplied by ten
+Round/Boxy - Change from round to a slightly boxed blur
+Use Mask -  Use an image as a mask. If no image is loaded then the included mask will be used.
+Preview Mask - Show mask.
+Uniform Radius - Makes the blur effect more evenly.
+Enable Tilt Shift - Enable or disable tilt-shift effect.
+Tilt Shift Pos - Change the position of the focus area.
+Tilt Shift Angle - Rotate the focus area.
+Upper Amount - You can also change the upper part of the tilt-shift effect independently.
+Lower Amount - And the lower part aswell.
+Upper Angle - Also you can rotate both parts independently. This one rotates the upper part.
+Lower Angle - And this one rotates the lower part.
+Separation - This adjusts the width of focus area.]]>
+  </Comment>
+  <OnLoaded>
+    <SpawnModel Model="Canvas"/>
+  </OnLoaded>
+  <OnUpdate>
+    <ZExpression>
+      <Expression>
+<![CDATA[float quaterValue;
+float sigmaV;
+
+float ViewportWidth = App.ViewportWidth;
+float ViewportHeight = App.ViewportHeight;
+
+if (Parameters[1] < 0.5)
+{
+
+if (Parameters[5] < 0.5) Amount.Value = Parameters[0]*100;
+else Amount.Value = Parameters[0]*ViewportHeight * 0.25;
+
+Amount1.Value = Amount.Value;
+
+quaterValue = Amount.Value / 4;
+sigmaV = quaterValue + quaterValue * 3 * (Parameters[2]  / 2);
+
+Sigma.Value = sigmaV == 0 ? 0.00001 : sigmaV;
+Sigma1.Value = Sigma.Value;
+}
+else
+{
+if (Parameters[5] < 0.5) Amount.Value = Parameters[0]*1000;
+else Amount.Value = Parameters[0]*ViewportHeight * 10  * 0.25;
+
+Amount1.Value = Amount.Value;
+
+quaterValue = Amount.Value / 4;
+sigmaV = quaterValue + quaterValue * 3 * (Parameters[2]  / 2);
+
+Sigma.Value = sigmaV == 0 ? 0.00001 : sigmaV;
+Sigma1.Value = Sigma.Value;
+}
+
+UseMask1.Value = Parameters[3];
+UseMask2.Value = Parameters[3];
+
+PreviewMask1.Value = Parameters[4];
+PreviewMask2.Value = Parameters[4];
+
+uRes=vector2(app.ViewportWidth,app.ViewportHeight);]]>
+      </Expression>
+    </ZExpression>
+  </OnUpdate>
+  <Content>
+    <Group>
+      <Children>
+        <Array Name="Parameters" SizeDim1="14" Persistent="255">
+          <Values>
+<![CDATA[78DA636060B067C00A1A40E250DC608FCA67B0070049CB03B8]]>
+          </Values>
+        </Array>
+        <Constant Name="ParamHelpConst" Type="2">
+          <StringValue>
+<![CDATA[Amount
+10x Amount @checkbox
+Round/Boxy
+Use Mask @checkbox
+Preview Mask @checkbox
+Uniform Radius @checkbox
+Enable Tilt-Shift @checkbox
+Tilt Shift Pos.
+Tilt Shift Angle
+Upper Amount
+Lower Amount
+Upper Angle
+Lower Angle
+Separation]]>
+          </StringValue>
+        </Constant>
+        <Variable Name="uRes" Type="6"/>
+        <Constant Name="AuthorInfo" Type="2" StringValue="Youlean (modified)"/>
+      </Children>
+    </Group>
+    <Model Name="Canvas" Rotation="0 0 0.001">
+      <OnRender>
+        <UseMaterial Material="FeedbackMaterial"/>
+        <RenderSprite/>
+        <SetRenderTarget RenderTarget="HorizontalTarget"/>
+        <UseMaterial Material="FeedbackMaterial"/>
+        <RenderSprite/>
+        <SetRenderTarget RenderTarget="VerticalTarget"/>
+        <UseMaterial Material="HorizontalMaterial"/>
+        <RenderSprite/>
+        <SetRenderTarget/>
+        <UseMaterial Material="VerticalMaterial"/>
+        <RenderSprite/>
+      </OnRender>
+    </Model>
+    <RenderTarget Name="HorizontalTarget" Width="0" Height="0"/>
+    <RenderTarget Name="VerticalTarget" Width="0" Height="0"/>
+    <Bitmap Name="Bitmap1" Width="228" Height="128">
+      <Producers>
+        <BitmapExpression UseBlankSource="1">
+          <Expression>
+<![CDATA[float n = 1 - (pow(abs(sin(PI*(X))),0.5*9/16) * sqrt(abs(sin(PI*Y)) ));   // squared bump gradient   16:9 aspectratio
+
+//float n = 1 - (sqrt(abs(sin(PI*(X))) * abs(sin(PI*Y))));   // squared bump gradient   1:1 aspectratio
+
+
+Pixel.r = n;
+Pixel.g = n;
+Pixel.b = n;
+Pixel.a = 1;]]>
+          </Expression>
+        </BitmapExpression>
+      </Producers>
+    </Bitmap>
+    <Material Name="HorizontalMaterial" Light="0" ZBuffer="0" Shader="HorizontalShader">
+      <Textures>
+        <MaterialTexture RenderTarget="HorizontalTarget" TexCoords="1"/>
+        <MaterialTexture Name="Source1" Texture="Bitmap1"/>
+      </Textures>
+    </Material>
+    <Shader Name="HorizontalShader">
+      <VertexShaderSource>
+<![CDATA[void main()
+{
+  vec4 vertex = gl_Vertex;
+  vertex.xy *= 2.0;
+  gl_Position = vertex;
+  gl_TexCoord[0] = gl_MultiTexCoord0;
+}]]>
+      </VertexShaderSource>
+      <FragmentShaderSource>
+<![CDATA[//http://callumhay.blogspot.rs/2010/09/gaussian-blur-shader-glsl.html
+
+// I originally modified the blur effect without asking for permission. :(
+// Forgive me Youlean,
+// sincerely Philer
+
+uniform vec2 iResolution;
+uniform sampler2D tex1;
+uniform sampler2D tex2;
+uniform float amount;
+uniform float sigma;
+uniform float useMask;
+uniform float previewMask;
+const int horizontalPass = 1; // 0 or 1 to indicate vertical or horizontal pass
+uniform float EnableTiltShift,
+              TiltShiftPosition,
+              TiltShiftAngle,
+              TiltShiftUpper,
+              TiltShiftLower,
+              TiltUpperAngle,
+              TiltLowerAngle,
+              TiltShiftOffs;
+
+//float sigma = amount / 2.0 + 0.0001;        // The sigma value for the gaussian function: higher value means more blur
+                            // A good value for 9x9 is around 3 to 5
+                            // A good value for 7x7 is around 2.5 to 4
+                            // A good value for 5x5 is around 2 to 3.5
+                            // ... play around with this based on what you need :)
+
+const float PI = 3.14159265;
+
+
+// rotate uv map
+vec2 rotate_uv(float angle, vec2 uv) {
+  return mat2(  cos(angle), sin(angle), -sin(angle), cos(angle))
+            *(  vec2(uv.x * (iResolution.x / iResolution.y), uv.y) - vec2(0.5))
+            +   vec2(0.5);
+}
+
+
+void main() {
+  vec2 p = gl_TexCoord[0].xy;
+
+  vec4 mask = texture2D(tex2, p);
+  float maskAmount = (mask.r + mask.g + mask.b) / 3.0 * mask.a;    //greyscale mask
+
+  float numBlurPixelsPerSide = amount / 2.;
+
+  numBlurPixelsPerSide *= maskAmount * step(0.5,useMask) + (1.0-step(0.5,useMask));  // if mask is in use
+
+  // tilt-shift rotation, rotate texcoords and save them in new variables
+  vec2 pa = rotate_uv((TiltShiftAngle-.5)*PI, p);        // Rotation angle overall
+  vec2 pau = rotate_uv((TiltUpperAngle-.5)*PI, pa);      // Rotation angle upper part
+  vec2 pal = rotate_uv((TiltLowerAngle-.5)*PI, pa);      // Rotation angle lower part
+
+  //tilt-shift magic happens below
+  numBlurPixelsPerSide *=
+    ( max(0.,min(1., sin(( pau.y-(TiltShiftPosition*1.5-0.5)-(TiltShiftOffs*.5-.25))*PI*TiltShiftUpper*.5)) )
+    + max(0.,min(1., sin((-pal.y+(TiltShiftPosition*1.5-0.5)-(TiltShiftOffs*.5-.25))*PI*TiltShiftLower*.5)) ) )
+    * step(0.5, EnableTiltShift) + (1.0-step(0.5, EnableTiltShift));    // returns 1 if tilt-shift is disabled
+
+  vec2 blurMultiplyVec = vec2(float(horizontalPass), 1.0-float(horizontalPass));
+
+  // Incremental Gaussian Coefficent Calculation (See GPU Gems 3 pp. 877 - 889)
+  vec3 incrementalGaussian;
+  incrementalGaussian.x = 1.0 / (sqrt(2.0 * PI) * sigma);
+  incrementalGaussian.y = exp(-0.5 / (sigma * sigma));
+  incrementalGaussian.z = incrementalGaussian.y * incrementalGaussian.y;
+
+  vec4 avgValue = vec4(0.0, 0.0, 0.0, 0.0);
+  float coefficientSum = 0.0;
+
+  // Take the central sample first...
+  avgValue += texture2D(tex1, p) * incrementalGaussian.x;
+  coefficientSum += incrementalGaussian.x;
+  incrementalGaussian.xy *= incrementalGaussian.yz;
+
+  // Go through the remaining 8 vertical samples (4 on each side of the center)
+  for (float i = 1.0; i <= numBlurPixelsPerSide; i++)
+   {
+    avgValue += texture2D(tex1, p - i / iResolution * blurMultiplyVec) * incrementalGaussian.x;
+    avgValue += texture2D(tex1, p + i / iResolution * blurMultiplyVec) * incrementalGaussian.x;
+    coefficientSum += 2.0 * incrementalGaussian.x;
+  incrementalGaussian.xy *= incrementalGaussian.yz;
+  }
+
+  gl_FragColor = mix(avgValue / coefficientSum, mask, previewMask);      //show mask
+
+}]]>
+      </FragmentShaderSource>
+      <UniformVariables>
+        <ShaderVariable Name="Amount" VariableName="amount"/>
+        <ShaderVariable Name="Sigma" VariableName="sigma"/>
+        <ShaderVariable VariableName="iResolution" VariableRef="uRes"/>
+        <ShaderVariable Name="UseMask1" VariableName="useMask"/>
+        <ShaderVariable Name="PreviewMask1" VariableName="previewMask"/>
+        <ShaderVariable VariableName="EnableTiltShift" ValuePropRef="floor(Parameters[6]);"/>
+        <ShaderVariable VariableName="TiltShiftPosition" ValuePropRef="Parameters[7];"/>
+        <ShaderVariable VariableName="TiltShiftAngle" ValuePropRef="Parameters[8];"/>
+        <ShaderVariable VariableName="TiltShiftUpper" ValuePropRef="Parameters[9];"/>
+        <ShaderVariable VariableName="TiltShiftLower" ValuePropRef="Parameters[10];"/>
+        <ShaderVariable VariableName="TiltUpperAngle" ValuePropRef="Parameters[11];"/>
+        <ShaderVariable VariableName="TiltLowerAngle" ValuePropRef="Parameters[12];"/>
+        <ShaderVariable VariableName="TiltShiftOffs" ValuePropRef="Parameters[13];"/>
+      </UniformVariables>
+    </Shader>
+    <Material Name="VerticalMaterial" Light="0" ZBuffer="0" Shader="VerticalShader">
+      <Textures>
+        <MaterialTexture RenderTarget="VerticalTarget" TexCoords="1"/>
+        <MaterialTexture Name="Source2" Texture="Bitmap1"/>
+      </Textures>
+    </Material>
+    <Shader Name="VerticalShader">
+      <VertexShaderSource>
+<![CDATA[void main()
+{
+  vec4 vertex = gl_Vertex;
+  vertex.xy *= 2.0;
+  gl_Position = vertex;
+  gl_TexCoord[0] = gl_MultiTexCoord0;
+}]]>
+      </VertexShaderSource>
+      <FragmentShaderSource>
+<![CDATA[//http://callumhay.blogspot.rs/2010/09/gaussian-blur-shader-glsl.html
+
+// I originally modified the blur effect without asking for permission. :(
+// Forgive me Youlean,
+// sincerely Philer
+
+uniform vec2 iResolution;
+uniform sampler2D tex1;
+uniform sampler2D tex2;
+uniform float amount;
+uniform float sigma;
+uniform float useMask;
+uniform float previewMask;
+const int horizontalPass = 0; // 0 or 1 to indicate vertical or horizontal pass
+uniform float EnableTiltShift,
+              TiltShiftPosition,
+              TiltShiftAngle,
+              TiltShiftUpper,
+              TiltShiftLower,
+              TiltUpperAngle,
+              TiltLowerAngle,
+              TiltShiftOffs;
+
+//float sigma = amount / 2.0 + 0.0001;        // The sigma value for the gaussian function: higher value means more blur
+                            // A good value for 9x9 is around 3 to 5
+                            // A good value for 7x7 is around 2.5 to 4
+                            // A good value for 5x5 is around 2 to 3.5
+                            // ... play around with this based on what you need :)
+
+const float PI = 3.14159265;
+
+
+// rotate uv map
+vec2 rotate_uv(float angle, vec2 uv) {
+  return mat2(  cos(angle), sin(angle), -sin(angle), cos(angle))
+            *(  vec2(uv.x * (iResolution.x / iResolution.y), uv.y) - vec2(0.5))
+            +   vec2(0.5);
+}
+
+
+void main() {
+  vec2 p = gl_TexCoord[0].xy;
+
+  vec4 mask = texture2D(tex2, p);
+  float maskAmount = (mask.r + mask.g + mask.b) / 3.0 * mask.a;    //greyscale mask
+
+  float numBlurPixelsPerSide = amount / 2.;
+
+  numBlurPixelsPerSide *= maskAmount * step(0.5,useMask) + (1.0-step(0.5,useMask));  // if mask is in use
+
+  // tilt-shift rotation, rotate texcoords and save them in new variables
+  vec2 pa = rotate_uv((TiltShiftAngle-.5)*PI, p);        // Rotation angle overall
+  vec2 pau = rotate_uv((TiltUpperAngle-.5)*PI, pa);      // Rotation angle upper part
+  vec2 pal = rotate_uv((TiltLowerAngle-.5)*PI, pa);      // Rotation angle lower part
+
+  //tilt-shift magic happens below
+  numBlurPixelsPerSide *=
+    ( max(0.,min(1., sin(( pau.y-(TiltShiftPosition*1.5-0.5)-(TiltShiftOffs*.5-.25))*PI*TiltShiftUpper*.5)) )
+    + max(0.,min(1., sin((-pal.y+(TiltShiftPosition*1.5-0.5)-(TiltShiftOffs*.5-.25))*PI*TiltShiftLower*.5)) ) )
+    * step(0.5, EnableTiltShift) + (1.0-step(0.5, EnableTiltShift));    // returns 1 if tilt-shift is disabled
+
+  vec2 blurMultiplyVec = vec2(float(horizontalPass), 1.0-float(horizontalPass));
+
+  // Incremental Gaussian Coefficent Calculation (See GPU Gems 3 pp. 877 - 889)
+  vec3 incrementalGaussian;
+  incrementalGaussian.x = 1.0 / (sqrt(2.0 * PI) * sigma);
+  incrementalGaussian.y = exp(-0.5 / (sigma * sigma));
+  incrementalGaussian.z = incrementalGaussian.y * incrementalGaussian.y;
+
+  vec4 avgValue = vec4(0.0, 0.0, 0.0, 0.0);
+  float coefficientSum = 0.0;
+
+  // Take the central sample first...
+  avgValue += texture2D(tex1, p) * incrementalGaussian.x;
+  coefficientSum += incrementalGaussian.x;
+  incrementalGaussian.xy *= incrementalGaussian.yz;
+
+  // Go through the remaining 8 vertical samples (4 on each side of the center)
+  for (float i = 1.0; i <= numBlurPixelsPerSide; i++)
+   {
+    avgValue += texture2D(tex1, p - i / iResolution * blurMultiplyVec) * incrementalGaussian.x;
+    avgValue += texture2D(tex1, p + i / iResolution * blurMultiplyVec) * incrementalGaussian.x;
+    coefficientSum += 2.0 * incrementalGaussian.x;
+  incrementalGaussian.xy *= incrementalGaussian.yz;
+  }
+
+  gl_FragColor = mix(avgValue / coefficientSum, mask, previewMask);      //show mask
+
+}]]>
+      </FragmentShaderSource>
+      <UniformVariables>
+        <ShaderVariable Name="Amount1" VariableName="amount"/>
+        <ShaderVariable Name="Sigma1" VariableName="sigma"/>
+        <ShaderVariable VariableName="iResolution" VariableRef="uRes"/>
+        <ShaderVariable Name="UseMask2" VariableName="useMask"/>
+        <ShaderVariable Name="PreviewMask2" VariableName="previewMask"/>
+        <ShaderVariable VariableName="EnableTiltShift" ValuePropRef="floor(Parameters[6]);"/>
+        <ShaderVariable VariableName="TiltShiftPosition" ValuePropRef="Parameters[7];"/>
+        <ShaderVariable VariableName="TiltShiftAngle" ValuePropRef="Parameters[8];"/>
+        <ShaderVariable VariableName="TiltShiftUpper" ValuePropRef="Parameters[9];"/>
+        <ShaderVariable VariableName="TiltShiftLower" ValuePropRef="Parameters[10];"/>
+        <ShaderVariable VariableName="TiltShiftOffs" ValuePropRef="Parameters[11];"/>
+        <ShaderVariable VariableName="TiltUpperAngle" ValuePropRef="Parameters[11];"/>
+        <ShaderVariable VariableName="TiltLowerAngle" ValuePropRef="Parameters[12];"/>
+        <ShaderVariable VariableName="TiltShiftOffs" ValuePropRef="Parameters[13];"/>
+      </UniformVariables>
+    </Shader>
+    <Material Name="FeedbackMaterial" Light="0" ZBuffer="0" Shader="FeedbackShader">
+      <Textures>
+        <MaterialTexture Name="FeedbackMaterialTexture" TexCoords="1"/>
+      </Textures>
+    </Material>
+    <Shader Name="FeedbackShader">
+      <VertexShaderSource>
+<![CDATA[void main()
+{
+  vec4 vertex = gl_Vertex;
+  vertex.xy *= 2.0;
+  gl_Position = vertex;
+  gl_TexCoord[0] = gl_MultiTexCoord0;
+}]]>
+      </VertexShaderSource>
+      <FragmentShaderSource>
+<![CDATA[// http://www.curious-creature.com/2007/02/20/fast-image-processing-with-jogl/
+
+uniform sampler2D tex1;
+
+void main()
+{
+
+  vec4 color;
+  vec2 pos = gl_TexCoord[0].xy;
+  color = texture2D(tex1,vec2(pos.x, pos.y));
+  gl_FragColor = color;
+}]]>
+      </FragmentShaderSource>
+    </Shader>
+  </Content>
+</ZApplication>
